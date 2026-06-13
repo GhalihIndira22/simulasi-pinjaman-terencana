@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Simulasi Pinjaman Terencana</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Miniapps simulasi</p>
+          <h1>Simulasi Pinjaman Terencana</h1>
+          <p class="subcopy">Dengan pinjaman tambahan dan tenor yang direset ke tenor awal pada bulan setelah saldo tambahan masuk.</p>
+        </div>
+        <div class="hero-metrics" aria-label="Ringkasan utama" style="display: none">
+          <div>
+            <span>Total Cicilan</span>
+            <strong id="heroTotalPayment">Rp0</strong>
+          </div>
+          <div>
+            <span>Saldo Akhir</span>
+            <strong id="heroEndingBalance">Rp0</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="workspace">
+        <aside class="panel controls-panel">
+          <div class="panel-title">
+            <h2>Parameter</h2>
+            <button class="icon-button" id="resetButton" type="button" title="Reset simulasi" aria-label="Reset simulasi">
+              <span aria-hidden="true">R</span>
+            </button>
+          </div>
+
+          <form id="parameterForm" class="input-groups">
+            <details class="input-group" open>
+              <summary>Input Pinjaman</summary>
+              <div class="input-group-content">
+                <div class="form-grid">
+                  <label>
+                    <span>Tanggal Pinjam</span>
+                    <input id="loanDate" type="date">
+                  </label>
+                  <label>
+                    <span>Jumlah Pinjaman</span>
+                    <input id="loanAmount" type="text" inputmode="numeric" autocomplete="off">
+                  </label>
+                  <label>
+                    <span>Tenor (Bulan)</span>
+                    <select id="tenor">
+                      <option value="3">3 bulan</option>
+                      <option value="6">6 bulan</option>
+                      <option value="9">9 bulan</option>
+                      <option value="12">12 bulan</option>
+                      <option value="24">24 bulan</option>
+                      <option value="36">36 bulan</option>
+                      <option value="48">48 bulan</option>
+                    </select>
+                  </label>
+                  <button id="saveLoanButton" class="primary-button" type="button">Save Input Pinjaman</button>
+                </div>
+              </div>
+            </details>
+          </form>
+
+          <details class="input-group quick-add">
+            <summary>Tambah Pinjaman</summary>
+            <div class="input-group-content">
+              <div class="quick-add-row">
+                <label>
+                  <span>Tanggal Pinjaman</span>
+                  <input id="extraDate" type="date">
+                </label>
+              <label>
+                <span>Nominal</span>
+                <input id="extraAmount" type="text" inputmode="numeric" autocomplete="off">
+              </label>
+                <button id="applyExtraButton" class="primary-button" type="button">Terapkan</button>
+              </div>
+            </div>
+          </details>
+
+          <details class="input-group">
+            <summary>Konfigurasi Perhitungan</summary>
+            <div class="input-group-content">
+              <div class="form-grid">
+                <label>
+                  <span>Bunga Efektif per Tahun (%)</span>
+                  <input id="annualRate" type="number" min="0" max="100" step="0.01" inputmode="decimal">
+                </label>
+                <label>
+                  <span>Cut Off Date</span>
+                  <input id="cutoffDay" type="number" min="1" max="31" step="1" inputmode="numeric">
+                </label>
+                <label>
+                  <span>Hari per Tahun</span>
+                  <input id="daysPerYear" type="number" min="1" step="1" inputmode="numeric">
+                </label>
+                <button id="saveCalculationButton" class="primary-button" type="button">Save Konfigurasi</button>
+              </div>
+            </div>
+          </details>
+        </aside>
+
+        <section class="main-panel">
+          <div class="summary-grid" aria-label="Ringkasan pembayaran">
+            <article>
+              <span>Total Bunga</span>
+              <strong id="totalInterest">Rp0</strong>
+            </article>
+            <article>
+              <span>Total Pokok</span>
+              <strong id="totalPrincipal">Rp0</strong>
+            </article>
+            <article>
+              <span>Total Pinjaman Tambahan</span>
+              <strong id="totalExtra">Rp0</strong>
+            </article>
+            <article>
+              <span>Rata-rata Cicilan</span>
+              <strong id="avgPayment">Rp0</strong>
+            </article>
+          </div>
+
+          <div class="table-toolbar">
+            <div>
+              <h2>Jadwal Amortisasi</h2>
+              <p>Hari bunga dihitung dari tanggal awal periode sampai cut off berikutnya.</p>
+            </div>
+            <div class="toolbar-actions">
+              <button id="clearExtrasButton" class="secondary-button" type="button">Kosongkan Tambahan</button>
+              <button id="exportButton" class="secondary-button" type="button">Export CSV</button>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Bulan</th>
+                  <th>Saldo Awal</th>
+                  <th>Tanggal Awal</th>
+                  <th>Cut Off</th>
+                  <th>Hari</th>
+                  <th>Bulan Reset</th>
+                  <th>Tenor Sisa</th>
+                  <th>Bunga</th>
+                  <th>Pokok</th>
+                  <th>Cicilan</th>
+                  <th>Saldo Akhir*</th>
+                  <th>Saldo Akhir**</th>
+                </tr>
+              </thead>
+              <tbody id="scheduleBody"></tbody>
+            </table>
+          </div>
+
+          <p class="notes">* Sebelum pinjaman tambahan. ** Setelah ditambah pinjaman baru. Jika cut off tanggal 31 jatuh pada bulan yang lebih pendek, cut off memakai hari terakhir bulan tersebut.</p>
+        </section>
+      </section>
+    </main>
+
+    <div id="transactionModal" class="modal-backdrop" aria-hidden="true">
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="transactionModalTitle">
+        <div class="modal-header">
+          <div>
+            <span>Detail Tambah Pinjaman</span>
+            <h2 id="transactionModalTitle">Transaksi Tambahan</h2>
+          </div>
+          <button id="closeTransactionModal" class="icon-button" type="button" aria-label="Tutup detail transaksi">X</button>
+        </div>
+        <div id="transactionModalBody" class="modal-body"></div>
+      </div>
+    </div>
+
+    <div id="toastContainer" class="toast-container" aria-live="polite" aria-atomic="true"></div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
