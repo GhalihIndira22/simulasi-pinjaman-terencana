@@ -1,8 +1,8 @@
 const defaults = {
-  loanAmount: 54547839,
-  tenor: 48,
-  annualRate: 8,
-  loanDate: "2026-01-10",
+  loanAmount: 12000000,
+  tenor: 12,
+  annualRate: 12,
+  loanDate: "2025-12-15",
   cutoffDay: 15,
   daysPerYear: 365,
   extras: [],
@@ -35,10 +35,6 @@ const elements = {
   clearExtrasButton: document.querySelector("#clearExtrasButton"),
   exportButton: document.querySelector("#exportButton"),
   resetButton: document.querySelector("#resetButton"),
-  transactionModal: document.querySelector("#transactionModal"),
-  transactionModalTitle: document.querySelector("#transactionModalTitle"),
-  transactionModalBody: document.querySelector("#transactionModalBody"),
-  closeTransactionModal: document.querySelector("#closeTransactionModal"),
 };
 
 let extras = [...defaults.extras];
@@ -184,58 +180,29 @@ function getExtrasForPeriod(periodStart, periodEnd) {
     }));
 }
 
-function formatExtraDetails(periodExtras) {
-  if (!periodExtras.length) return "";
-
-  return periodExtras.map((extra) => {
-    return `${formatCurrency(extra.amount)} (${formatDate(extra.dateObject)}, ${extra.daysToCutoff} hari)`;
-  }).join("<br>");
-}
-
-function formatExtraSummary(periodExtras) {
-  if (!periodExtras.length) return "";
-
-  return `<button class="extra-inline-button" type="button" data-detail-trigger title="Lihat detail tambah pinjaman">+${periodExtras.length} trx</button>`;
-}
-
-function renderExtraDetailTable(row) {
-  if (!row.periodExtras.length) return "";
-
-  const detailRows = row.periodExtras.map((extra, index) => {
+function renderExtraRows(row) {
+  return row.periodExtras.map((extra) => {
     const config = activeConfig || readConfigFromFields();
     const extraInterest = extra.amount * config.annualRate * (extra.daysToCutoff / config.daysPerYear);
 
     return `
-      <tr>
-        <td>${index + 1}</td>
-        <td>${formatDate(extra.dateObject)}</td>
+      <tr class="extra-transaction-row" data-row-month="${row.month}">
+        <td><span class="type-badge type-extra">Tambah Pinjaman</span></td>
+        <td>${row.month}</td>
         <td>${formatCurrency(extra.amount)}</td>
-        <td>${extra.daysToCutoff} hari</td>
+        <td>${formatDate(extra.dateObject)}</td>
+        <td>${formatDate(row.periodEnd)}</td>
+        <td>${extra.daysToCutoff}</td>
+        <td>${row.resetMonth}</td>
+        <td>${row.remainingTenor}</td>
         <td>${formatCurrency(extraInterest)}</td>
+        <td>-</td>
+        <td>${formatCurrency(extraInterest)}</td>
+        <td>-</td>
+        <td>-</td>
       </tr>
     `;
   }).join("");
-
-  return `
-    <div class="extra-detail-panel">
-      <div>
-        <span>Periode</span>
-        <strong>${formatDate(row.periodStart)} - ${formatDate(row.periodEnd)}</strong>
-      </div>
-      <table class="extra-detail-table">
-        <thead>
-          <tr>
-            <th>No</th>
-            <th>Tanggal Pinjaman</th>
-            <th>Nominal</th>
-            <th>Hari ke Cut Off</th>
-            <th>Bunga Tambahan</th>
-          </tr>
-        </thead>
-        <tbody>${detailRows}</tbody>
-      </table>
-    </div>
-  `;
 }
 
 function setDefaults() {
@@ -324,16 +291,21 @@ function simulate(config) {
   const maxScheduleRows = Math.max(config.tenor, 1) * 20;
 
   for (let month = 1; month <= scheduleEndMonth && month <= maxScheduleRows; month += 1) {
-    const beginningBalance = month === 1 ? config.loanAmount : endingAfterExtra;
+    const baseBeginningBalance = month === 1 ? config.loanAmount : endingAfterExtra;
     const periodEnd = nextCutoffAfter(periodStart, config.cutoffDay);
     const periodDays = differenceInDays(periodStart, periodEnd);
     const periodExtras = getExtrasForPeriod(periodStart, periodEnd);
-    const extra = periodExtras.reduce((sum, item) => sum + item.amount, 0);
-    const extraInterest = periodExtras.reduce((sum, item) => {
+    const startingExtras = periodExtras.filter((item) => compareDates(item.dateObject, periodStart) === 0);
+    const midPeriodExtras = periodExtras.filter((item) => compareDates(item.dateObject, periodStart) > 0);
+    const startingExtra = startingExtras.reduce((sum, item) => sum + item.amount, 0);
+    const midPeriodExtra = midPeriodExtras.reduce((sum, item) => sum + item.amount, 0);
+    const extra = startingExtra + midPeriodExtra;
+    const extraInterest = midPeriodExtras.reduce((sum, item) => {
       return sum + (item.amount * config.annualRate * (item.daysToCutoff / config.daysPerYear));
     }, 0);
+    const beginningBalance = baseBeginningBalance + startingExtra;
 
-    if (month > 1 && previousExtra > 0) {
+    if (month > 1 && (previousExtra > 0 || startingExtra > 0)) {
       resetMonth = month;
       scheduleEndMonth = month + config.tenor - 1;
     }
@@ -341,13 +313,13 @@ function simulate(config) {
     const remainingTenor = Math.max(1, config.tenor - (month - resetMonth));
     const baseInterest = beginningBalance * config.annualRate * (periodDays / config.daysPerYear);
     const interest = baseInterest + extraInterest;
-    const principal = Math.max(0, Math.min(beginningBalance / remainingTenor, beginningBalance - baseInterest));
+    const principal = Math.max(0, Math.min(beginningBalance / remainingTenor, beginningBalance));
     const payment = interest + principal;
-    const endingBeforeExtra = beginningBalance - (baseInterest + principal);
+    const endingBeforeExtra = beginningBalance - principal;
 
-    endingAfterExtra = Math.max(0, endingBeforeExtra + extra - extraInterest);
-    previousExtra = extra;
-    if (extra > 0) {
+    endingAfterExtra = Math.max(0, endingBeforeExtra + midPeriodExtra);
+    previousExtra = midPeriodExtra;
+    if (midPeriodExtra > 0) {
       scheduleEndMonth = Math.max(scheduleEndMonth, month + config.tenor);
     }
     totalInterest += interest;
@@ -400,11 +372,9 @@ function render() {
     const rowClass = row.extra > 0 ? "extra-row" : "";
     return `
       <tr class="${rowClass}" data-row-month="${row.month}">
+        <td><span class="type-badge type-payment">Cicilan</span></td>
         <td>${row.month}</td>
-        <td>
-          <span>${formatCurrency(row.beginningBalance)}</span>
-          ${formatExtraSummary(row.periodExtras)}
-        </td>
+        <td>${formatCurrency(row.beginningBalance)}</td>
         <td>${formatDate(row.periodStart)}</td>
         <td>${formatDate(row.periodEnd)}</td>
         <td>${row.periodDays}</td>
@@ -416,6 +386,7 @@ function render() {
         <td>${formatCurrency(row.endingBeforeExtra)}</td>
         <td>${formatCurrency(row.endingAfterExtra)}</td>
       </tr>
+      ${renderExtraRows(row)}
     `;
   }).join("");
 
@@ -483,23 +454,9 @@ function setExtraLoan(date, amount, shouldFocus = amount > 0) {
   render();
 }
 
-function openTransactionModal(month) {
-  const row = currentRows.find((item) => String(item.month) === String(month));
-  if (!row || !row.periodExtras.length) return;
-
-  elements.transactionModalTitle.textContent = `Transaksi Tambahan Bulan ${row.month}`;
-  elements.transactionModalBody.innerHTML = renderExtraDetailTable(row);
-  elements.transactionModal.classList.add("is-open");
-  elements.transactionModal.setAttribute("aria-hidden", "false");
-}
-
-function closeTransactionModal() {
-  elements.transactionModal.classList.remove("is-open");
-  elements.transactionModal.setAttribute("aria-hidden", "true");
-}
-
 function exportCsv() {
   const headers = [
+    "Tipe",
     "Bulan",
     "Saldo Awal",
     "Tanggal Awal",
@@ -511,25 +468,49 @@ function exportCsv() {
     "Pokok",
     "Cicilan",
     "Saldo Akhir Sebelum Tambahan",
-    "Tambah Pinjaman",
     "Saldo Akhir Setelah Tambahan",
   ];
 
-  const lines = currentRows.map((row) => [
-    row.month,
-    row.beginningBalance,
-    toDateInputValue(row.periodStart),
-    toDateInputValue(row.periodEnd),
-    row.periodDays,
-    row.resetMonth,
-    row.remainingTenor,
-    row.interest,
-    row.principal,
-    row.payment,
-    row.endingBeforeExtra,
-    row.periodExtras.map((extra) => `${extra.date} | ${extra.amount} | ${extra.daysToCutoff} hari`).join("; "),
-    row.endingAfterExtra,
-  ].map((value) => `"${String(value).replaceAll('"', '""')}"`).join(","));
+  const lines = currentRows.flatMap((row) => {
+    const paymentLine = [
+      "Cicilan",
+      row.month,
+      row.beginningBalance,
+      toDateInputValue(row.periodStart),
+      toDateInputValue(row.periodEnd),
+      row.periodDays,
+      row.resetMonth,
+      row.remainingTenor,
+      row.interest,
+      row.principal,
+      row.payment,
+      row.endingBeforeExtra,
+      row.endingAfterExtra,
+    ];
+
+    const extraLines = row.periodExtras.map((extra) => {
+      const config = activeConfig || readConfigFromFields();
+      const extraInterest = extra.amount * config.annualRate * (extra.daysToCutoff / config.daysPerYear);
+
+      return [
+        "Tambah Pinjaman",
+        row.month,
+        extra.amount,
+        extra.date,
+        toDateInputValue(row.periodEnd),
+        extra.daysToCutoff,
+        row.resetMonth,
+        row.remainingTenor,
+        extraInterest,
+        "",
+        extraInterest,
+        "",
+        "",
+      ];
+    });
+
+    return [paymentLine, ...extraLines];
+  }).map((line) => line.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(","));
 
   const csv = [headers.join(","), ...lines].join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
@@ -556,29 +537,6 @@ elements.applyExtraButton.addEventListener("click", () => {
     elements.extraAmount.value = "";
     showToast("Tambah pinjaman berhasil disimpan.");
   });
-});
-
-elements.scheduleBody.addEventListener("click", (event) => {
-  const trigger = event.target.closest("[data-detail-trigger]");
-  if (!trigger) return;
-
-  const row = trigger.closest("[data-row-month]");
-  if (!row) return;
-
-  openTransactionModal(row.dataset.rowMonth);
-});
-
-elements.closeTransactionModal.addEventListener("click", closeTransactionModal);
-elements.transactionModal.addEventListener("click", (event) => {
-  if (event.target === elements.transactionModal) {
-    closeTransactionModal();
-  }
-});
-
-document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && elements.transactionModal.classList.contains("is-open")) {
-    closeTransactionModal();
-  }
 });
 
 elements.saveLoanButton.addEventListener("click", () => {
